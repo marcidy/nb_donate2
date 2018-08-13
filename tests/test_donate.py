@@ -1,21 +1,48 @@
 import os
+import shutil
 import tempfile
 
 import pytest
 
-from donate import donate
+import donate
+from donate.database import db
+from donate import models
+
+from flask_migrate import (
+    init,
+    migrate,
+    upgrade,
+)
 
 
 @pytest.fixture
 def client():
-    db_fd, donate.app.config['DATABASE'] = tempfile.mkstemp()
-    donate.app.config['TESTING'] = True
-    client = donate.app.test_client()
+    db_fd, db_path = tempfile.mkstemp()
+    mig_path = tempfile.mkdtemp()
+    os.rmdir(mig_path)
 
-    with donate.app.app_context():
-        donate.init_db()
+    app = donate.create_app({
+        'TESTING': True,
+        'DATABASE': db_path,
+        })
+
+    client = app.test_client()
+
+    with app.app_context():
+        db.create_all()
+        # init(mig_path)
+        # migrate(mig_path)
+        # upgrade(mig_path)
 
     yield client
 
     os.close(db_fd)
-    os.unlink(donate.app.config['DATABASE'])
+    os.unlink(app.config['DATABASE'])
+    # shutil.rmtree(mig_path)
+
+
+def test_user_creation(client):
+    u = models.User(username="John", slack="jslack", email="john@email.net")
+    db.session.add(u)
+    users = models.User.query.all()
+    assert len(users) == 1
